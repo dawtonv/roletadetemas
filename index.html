@@ -388,6 +388,29 @@ body{
   transition:border-color .15s,color .15s;
 }
 .reset-btn:hover{border-color:var(--orange);color:var(--orange)}
+/* TOOLTIP */
+#wheelTooltip{
+  position:fixed;
+  pointer-events:none;
+  background:var(--text-dark);
+  color:var(--white);
+  font-size:.78rem;
+  line-height:1.4;
+  padding:.45rem .7rem;
+  border-radius:8px;
+  max-width:260px;
+  box-shadow:0 4px 16px rgba(0,0,0,.3);
+  z-index:200;
+  display:none;
+  border-left:3px solid var(--orange);
+}
+#wheelTooltip .tt-num{font-size:.65rem;color:var(--orange);font-weight:700;margin-bottom:.15rem}
+#wheelTooltip .tt-prob{display:flex;align-items:center;gap:.4rem;margin-top:.35rem}
+#wheelTooltip .tt-stars{color:var(--orange);font-size:.95rem;letter-spacing:.03em}
+#wheelTooltip .tt-prob-label{font-size:.65rem;font-weight:700;background:var(--orange);color:#fff;border-radius:20px;padding:.1rem .4rem}
+#wheelTooltip .tt-drawn{font-size:.65rem;opacity:.6;margin-top:.3rem}
+/* canvas cursor */
+#wheelCanvas{cursor:crosshair}
 </style>
 </head>
 <body>
@@ -412,6 +435,7 @@ body{
   </div>
 </div>
 
+<div id="wheelTooltip"><div class="tt-num" id="ttNum"></div><div id="ttTitle"></div><div class="tt-prob"><span class="tt-stars" id="ttStars"></span><span class="tt-prob-label" id="ttProbLabel"></span></div><div class="tt-drawn" id="ttDrawn"></div></div>
 <!-- MODAL -->
 <div class="modal-overlay" id="modalOverlay" onclick="closeModalOutside(event)">
   <div class="modal" id="modal">
@@ -865,6 +889,63 @@ function closeModal() {
 function closeModalOutside(e) {
   if (e.target === document.getElementById('modalOverlay')) closeModal();
 }
+
+// ── CANVAS HIT-TEST ─────────────────────────────────────────────────────────
+function getTemaAt(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = CW / rect.width;
+  const scaleY = CH / rect.height;
+  const x = (clientX - rect.left) * scaleX - CX;
+  const y = (clientY - rect.top)  * scaleY - CY;
+  const dist = Math.sqrt(x * x + y * y);
+  const CR = 72; // center circle radius (must match drawWheel)
+  if (dist < CR || dist > R) return null; // center or outside
+  // angle relative to current rotation, normalised to [0, 2π)
+  let angle = Math.atan2(y, x) - currentAngle;
+  angle = ((angle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+  const idx = Math.floor(angle / SLICE) % TOTAL;
+  return TEMAS[idx] || null;
+}
+
+// ── TOOLTIP ──────────────────────────────────────────────────────────────────
+const tooltip = document.getElementById('wheelTooltip');
+
+canvas.addEventListener('mousemove', (e) => {
+  if (spinning) { tooltip.style.display = 'none'; return; }
+  const tema = getTemaAt(e.clientX, e.clientY);
+  if (!tema) { tooltip.style.display = 'none'; canvas.style.cursor = 'crosshair'; return; }
+  const prob = PROB[tema.prob];
+  document.getElementById('ttNum').textContent = 'Tema ' + tema.id + ' · ' + EIXOS[tema.eixo].nome;
+  document.getElementById('ttTitle').textContent = tema.titulo;
+  document.getElementById('ttStars').innerHTML = renderStars(prob.estrelas);
+  document.getElementById('ttProbLabel').textContent = prob.label;
+  document.getElementById('ttDrawn').textContent = drawn.has(tema.id) ? '✓ já sorteado — clique para rever' : 'Clique para abrir';
+  // position tooltip
+  const gap = 12;
+  let left = e.clientX + gap;
+  let top  = e.clientY + gap;
+  tooltip.style.display = 'block';
+  const tw = tooltip.offsetWidth;
+  const th = tooltip.offsetHeight;
+  if (left + tw > window.innerWidth  - 8) left = e.clientX - tw - gap;
+  if (top  + th > window.innerHeight - 8) top  = e.clientY - th - gap;
+  tooltip.style.left = left + 'px';
+  tooltip.style.top  = top  + 'px';
+  canvas.style.cursor = 'pointer';
+});
+
+canvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+
+canvas.addEventListener('click', (e) => {
+  if (spinning) return;
+  const tema = getTemaAt(e.clientX, e.clientY);
+  if (!tema) return;
+  tooltip.style.display = 'none';
+  drawn.add(tema.id);
+  document.getElementById('drawnCount').textContent = drawn.size;
+  drawWheel(currentAngle);
+  openModal(tema);
+});
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
 renderLegend();
